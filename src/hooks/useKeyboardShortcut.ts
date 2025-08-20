@@ -1,72 +1,98 @@
 import { useEffect } from 'react';
 import hotkeys from 'hotkeys-js';
-import { useEditor } from '../store/EditorContext';
-import { KeyboardShortcuts } from '../utils/constants';
-import { deepCopy } from '../utils/helper';
+import { useAppDispatch, useAppSelector } from '../store';
+import { 
+  selectSelectedNodes, 
+  selectClipboard, 
+  selectCanUndo, 
+  selectCanRedo 
+} from '../store';
+import {
+  undo,
+  redo,
+  copyToClipboard,
+  pasteFromClipboard,
+  deleteNode,
+  clearSelection
+} from '../store/workflowSlice';
 
 export const useKeyboardShortcut = () => {
-  const { state, dispatch } = useEditor();
-  const { selectedId, components, clipboard } = state;
+  const dispatch = useAppDispatch();
+  const selectedNodes = useAppSelector(selectSelectedNodes);
+  const clipboard = useAppSelector(selectClipboard);
+  const canUndo = useAppSelector(selectCanUndo);
+  const canRedo = useAppSelector(selectCanRedo);
 
   useEffect(() => {
-    // 注册复制快捷键
-    hotkeys(KeyboardShortcuts.COPY, (event) => {
+    // 复制 (Ctrl+C)
+    hotkeys('ctrl+c,command+c', (event) => {
       event.preventDefault();
       
-      if (selectedId) {
-        const selectedComponent = components.find(comp => comp.id === selectedId);
-        if (selectedComponent) {
-          // 克隆选中的组件，并保存到剪贴板
-          const clonedComponent = deepCopy(selectedComponent);
-          dispatch({ type: 'SET_CLIPBOARD', component: clonedComponent });
-        }
+      if (selectedNodes.length > 0) {
+        dispatch(copyToClipboard());
       }
     });
 
-    // 注册粘贴快捷键
-    hotkeys(KeyboardShortcuts.PASTE, (event) => {
+    // 粘贴 (Ctrl+V)
+    hotkeys('ctrl+v,command+v', (event) => {
       event.preventDefault();
       
       if (clipboard) {
-        // 创建新组件，修改ID以避免ID冲突
-        const newComponent = deepCopy(clipboard);
-        newComponent.id = `${newComponent.id}-copy-${Date.now()}`;
-        newComponent.key = newComponent.id;
-        
-        dispatch({ type: 'ADD_COMPONENT', component: newComponent });
+        const pastePosition = { x: 100, y: 100 }; // 默认粘贴位置
+        dispatch(pasteFromClipboard(pastePosition));
       }
     });
 
-    // 注册删除快捷键
-    hotkeys(KeyboardShortcuts.DELETE, (event) => {
+    // 删除 (Delete/Backspace)
+    hotkeys('delete,backspace', (event) => {
       event.preventDefault();
       
-      if (selectedId) {
-        dispatch({ type: 'DELETE_COMPONENT', id: selectedId });
+      selectedNodes.forEach(nodeId => {
+        dispatch(deleteNode(nodeId));
+      });
+    });
+
+    // 撤销 (Ctrl+Z)
+    hotkeys('ctrl+z,command+z', (event) => {
+      event.preventDefault();
+      
+      if (canUndo) {
+        dispatch(undo());
       }
     });
 
-    // 注册撤销快捷键
-    hotkeys(KeyboardShortcuts.UNDO, (event) => {
+    // 重做 (Ctrl+Shift+Z)
+    hotkeys('ctrl+shift+z,command+shift+z', (event) => {
       event.preventDefault();
-      dispatch({ type: 'UNDO' });
+      
+      if (canRedo) {
+        dispatch(redo());
+      }
     });
 
-    // 注册重做快捷键
-    hotkeys(KeyboardShortcuts.REDO, (event) => {
+    // 全选 (Ctrl+A)
+    hotkeys('ctrl+a,command+a', (event) => {
       event.preventDefault();
-      dispatch({ type: 'REDO' });
+      // 这里可以实现全选功能
     });
 
+    // 清除选择 (Escape)
+    hotkeys('escape', (event) => {
+      event.preventDefault();
+      dispatch(clearSelection());
+    });
+
+    // 清理函数
     return () => {
-      // 清除所有快捷键绑定
-      hotkeys.unbind(KeyboardShortcuts.COPY);
-      hotkeys.unbind(KeyboardShortcuts.PASTE);
-      hotkeys.unbind(KeyboardShortcuts.DELETE);
-      hotkeys.unbind(KeyboardShortcuts.UNDO);
-      hotkeys.unbind(KeyboardShortcuts.REDO);
+      hotkeys.unbind('ctrl+c,command+c');
+      hotkeys.unbind('ctrl+v,command+v');
+      hotkeys.unbind('delete,backspace');
+      hotkeys.unbind('ctrl+z,command+z');
+      hotkeys.unbind('ctrl+shift+z,command+shift+z');
+      hotkeys.unbind('ctrl+a,command+a');
+      hotkeys.unbind('escape');
     };
-  }, [dispatch, selectedId, components, clipboard]);
+  }, [dispatch, selectedNodes, clipboard, canUndo, canRedo]);
 
   return null;
-}; 
+};
